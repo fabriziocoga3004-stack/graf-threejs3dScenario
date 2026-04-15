@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Control de Escenarios 3D - Práctica 3.4</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+        <link type="text/css" rel="stylesheet" href="main.css">
+        <style>
+            body { background-color: #000; margin: 0; overflow: hidden; }
+            #info { color: #ffffff; text-shadow: 1px 1px 2px #000; z-index: 100; position: absolute; top: 10px; width: 100%; text-align: center; font-family: sans-serif;}
+        </style>
+    </head>
+
+    <body>
+        <div id="info">
+            <strong>Práctica 3.4</strong> - Continuidad de Escenario Nocturno<br />
+            Suelo Verde Especial #01c02e | Personaje Cobre Metálico | Audio: Pisadas
+        </div>
+
+        <script type="importmap">
+            {
+                "imports": {
+                    "three": "../build/three.module.js",
+                    "three/addons/": "./jsm/"
+                }
+            }
+        </script>
+
+        <script type="module">
+            import * as THREE from 'three';
+            import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+            import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+            import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
+
+            let camera, scene, renderer, object, mixer;
+            const clock = new THREE.Clock();
+            const manager = new THREE.LoadingManager();
+
+            init();
+
+            function init() {
+                const container = document.createElement( 'div' );
+                document.body.appendChild( container );
+
+                camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
+                camera.position.set( 150, 200, 450 );
+
+                scene = new THREE.Scene();
+
+                // Neblina sutil para mezclar el suelo con el fondo
+                scene.fog = new THREE.FogExp2( 0x011a05, 0.001 );
+
+                // --- LUCES OPTIMIZADAS (Equilibrio noche/visibilidad) ---
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); 
+                scene.add(ambientLight);
+
+                const hemiLight = new THREE.HemisphereLight( 0x88aaff, 0x01c02e, 1.2 ); // Más luz de suelo
+                scene.add( hemiLight );
+
+                const dirLight = new THREE.DirectionalLight( 0xffffff, 3.5 ); // Luz lunar potente
+                dirLight.position.set( 100, 250, 100 );
+                dirLight.castShadow = true;
+                // Mejorar calidad de sombras
+                dirLight.shadow.mapSize.width = 2048;
+                dirLight.shadow.mapSize.height = 2048;
+                scene.add( dirLight );
+
+                // --- SUELO VERDE ESPECIAL #01c02e (VISIBLE) ---
+                const mesh = new THREE.Mesh( 
+                    new THREE.PlaneGeometry( 3000, 3000 ), 
+                    new THREE.MeshStandardMaterial( { 
+                        color: 0x01c02e, 
+                        roughness: 0.8,
+                        metalness: 0.1
+                    } ) 
+                );
+                mesh.rotation.x = - Math.PI / 2;
+                mesh.receiveShadow = true;
+                scene.add( mesh );
+
+                renderer = new THREE.WebGLRenderer( { antialias: true } );
+                renderer.setPixelRatio( window.devicePixelRatio );
+                renderer.setSize( window.innerWidth, window.innerHeight );
+                renderer.setAnimationLoop( animate );
+                renderer.shadowMap.enabled = true;
+                // Tipo de sombra más suave
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+                renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                renderer.toneMappingExposure = 1.6; // Subir brillo general
+                container.appendChild( renderer.domElement );
+
+                const controls = new OrbitControls( camera, renderer.domElement );
+                controls.target.set( 0, 100, 0 );
+                controls.update();
+
+                // Fondo EXR
+                new EXRLoader().load('models/rgbe/dikhololo_night_4k.exr', function (texture) {
+                    texture.mapping = THREE.EquirectangularReflectionMapping;
+                    scene.background = texture;
+                    scene.environment = texture; // Esto es vital para el reflejo metálico
+                });
+
+                // Audio
+                const listener = new THREE.AudioListener();
+                camera.add(listener);
+                const sound = new THREE.Audio(listener);
+                new THREE.AudioLoader().load('models/rgbe/pisadas.mp3', function (buffer) {
+                    sound.setBuffer(buffer);
+                    sound.setLoop(true);
+                    sound.setVolume(0.5);
+                    // Lógica para asegurar el inicio tras interacción
+                    const startSound = () => {
+                        if (sound.context.state === 'suspended') sound.context.resume();
+                        if (!sound.isPlaying) sound.play(); 
+                    };
+                    window.addEventListener('click', startSound);
+                });
+
+                loadAsset('Walk With Rifle');
+
+                window.addEventListener( 'resize', onWindowResize );
+            }
+
+            function loadAsset( asset ) {
+                const loader = new FBXLoader( manager );
+                loader.load( 'models/fbx/' + asset + '.fbx', function ( group ) {
+                    if ( object ) scene.remove( object );
+                    object = group;
+
+                    if ( object.animations && object.animations.length ) {
+                        mixer = new THREE.AnimationMixer( object );
+                        mixer.clipAction( object.animations[ 0 ] ).play();
+                    }
+
+                    object.traverse( function ( child ) {
+                        if ( child.isMesh ) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+
+                            // --- NUEVO COLOR COBRE METÁLICO ---
+                            child.material = new THREE.MeshStandardMaterial({
+                                color: 0xb87333,      // Tono Cobre base
+                                metalness: 1.0,       // Completamente metálico
+                                roughness: 0.1,       // Pulido para reflejar el bosque nocturno
+                                envMapIntensity: 2.0  // Intensifica el reflejo del ambiente EXR
+                            });
+                        }
+                    } );
+                    scene.add( object );
+                } );
+            }
+
+            function onWindowResize() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize( window.innerWidth, window.innerHeight );
+            }
+
+            function animate() {
+                const delta = clock.getDelta();
+                if ( mixer ) mixer.update( delta );
+                renderer.render( scene, camera );
+            }
+        </script>
+    </body>
+</html>
