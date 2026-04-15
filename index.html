@@ -20,8 +20,8 @@
         <script type="importmap">
             {
                 "imports": {
-                    "three": "../build/three.module.js",
-                    "three/addons/": "./jsm/"
+                    "three": "./build/three.module.js",
+                    "three/addons/": "./examples/jsm/"
                 }
             }
         </script>
@@ -47,25 +47,24 @@
 
                 scene = new THREE.Scene();
 
-                // Neblina sutil para mezclar el suelo con el fondo
+                // Neblina sutil
                 scene.fog = new THREE.FogExp2( 0x011a05, 0.001 );
 
-                // --- LUCES OPTIMIZADAS (Equilibrio noche/visibilidad) ---
+                // --- LUCES ---
                 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); 
                 scene.add(ambientLight);
 
-                const hemiLight = new THREE.HemisphereLight( 0x88aaff, 0x01c02e, 1.2 ); // Más luz de suelo
+                const hemiLight = new THREE.HemisphereLight( 0x88aaff, 0x01c02e, 1.2 );
                 scene.add( hemiLight );
 
-                const dirLight = new THREE.DirectionalLight( 0xffffff, 3.5 ); // Luz lunar potente
+                const dirLight = new THREE.DirectionalLight( 0xffffff, 3.5 );
                 dirLight.position.set( 100, 250, 100 );
                 dirLight.castShadow = true;
-                // Mejorar calidad de sombras
                 dirLight.shadow.mapSize.width = 2048;
                 dirLight.shadow.mapSize.height = 2048;
                 scene.add( dirLight );
 
-                // --- SUELO VERDE ESPECIAL #01c02e (VISIBLE) ---
+                // --- SUELO ---
                 const mesh = new THREE.Mesh( 
                     new THREE.PlaneGeometry( 3000, 3000 ), 
                     new THREE.MeshStandardMaterial( { 
@@ -83,32 +82,30 @@
                 renderer.setSize( window.innerWidth, window.innerHeight );
                 renderer.setAnimationLoop( animate );
                 renderer.shadowMap.enabled = true;
-                // Tipo de sombra más suave
                 renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
                 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.6; // Subir brillo general
+                renderer.toneMappingExposure = 1.6;
                 container.appendChild( renderer.domElement );
 
                 const controls = new OrbitControls( camera, renderer.domElement );
                 controls.target.set( 0, 100, 0 );
                 controls.update();
 
-                // Fondo EXR
-                new EXRLoader().load('models/rgbe/dikhololo_night_4k.exr', function (texture) {
+                // --- CARGA DE ASSETS (Rutas corregidas para raíz) ---
+                const exrLoader = new EXRLoader();
+                exrLoader.load('examples/models/rgbe/dikhololo_night_4k.exr', function (texture) {
                     texture.mapping = THREE.EquirectangularReflectionMapping;
                     scene.background = texture;
-                    scene.environment = texture; // Esto es vital para el reflejo metálico
+                    scene.environment = texture;
                 });
 
-                // Audio
                 const listener = new THREE.AudioListener();
                 camera.add(listener);
                 const sound = new THREE.Audio(listener);
-                new THREE.AudioLoader().load('models/rgbe/pisadas.mp3', function (buffer) {
+                new THREE.AudioLoader().load('examples/models/rgbe/pisadas.mp3', function (buffer) {
                     sound.setBuffer(buffer);
                     sound.setLoop(true);
                     sound.setVolume(0.5);
-                    // Lógica para asegurar el inicio tras interacción
                     const startSound = () => {
                         if (sound.context.state === 'suspended') sound.context.resume();
                         if (!sound.isPlaying) sound.play(); 
@@ -123,7 +120,8 @@
 
             function loadAsset( asset ) {
                 const loader = new FBXLoader( manager );
-                loader.load( 'models/fbx/' + asset + '.fbx', function ( group ) {
+                // Ruta corregida agregando /examples/
+                loader.load( 'examples/models/fbx/' + asset + '.fbx', function ( group ) {
                     if ( object ) scene.remove( object );
                     object = group;
 
@@ -136,13 +134,11 @@
                         if ( child.isMesh ) {
                             child.castShadow = true;
                             child.receiveShadow = true;
-
-                            // --- NUEVO COLOR COBRE METÁLICO ---
                             child.material = new THREE.MeshStandardMaterial({
-                                color: 0xb87333,      // Tono Cobre base
-                                metalness: 1.0,       // Completamente metálico
-                                roughness: 0.1,       // Pulido para reflejar el bosque nocturno
-                                envMapIntensity: 2.0  // Intensifica el reflejo del ambiente EXR
+                                color: 0xb87333,
+                                metalness: 1.0,
+                                roughness: 0.1,
+                                envMapIntensity: 2.0
                             });
                         }
                     } );
